@@ -26,6 +26,7 @@ def get_or_create_overlay_plane(context):
     plane = context.active_object
     plane.name = OVERLAY_PLANE_NAME
     plane.parent = cam
+    plane.matrix_parent_inverse.identity()
     plane.hide_select = True
     plane.hide_render = True
 
@@ -37,65 +38,25 @@ def fit_overlay_to_camera(plane, scene):
     
     cam = scene.camera
     if not cam: return
-    render = scene.render
 
     # Ensure parentage if not already (safeguard)
     if plane.parent != cam:
         plane.parent = cam
-        # When parenting, we want to reset transform so it snaps to camera
-        plane.matrix_world = cam.matrix_world
+        plane.matrix_parent_inverse.identity()
 
-    # Reset transform in local space to lock it to camera view
-    # Camera looks down -Z. Plane default is XY.
+    # Camera looks down -Z. A plane on local XY at negative Z faces the camera.
     distance = 1.0
     plane.location = (0, 0, -distance)
     plane.rotation_euler = (0, 0, 0) # Plane XY faces +Z, which is back at camera.
-    
-    # Scale to match aspect ratio
-    aspect = render.resolution_x / render.resolution_y
-    
-    # Sensor fit logic duplication to match what the camera sees?
-    # Actually, for a plane at distance 1.0, we just need to match the camera's FOV.
-    # But as a simple approximation for "Lock to Camera", we scale it directly by aspect.
-    # To be perfectly precise requires FOV calculation, but let's start with aspect match.
-    # Since we are using "Sensor Fit: Auto" in props.py, we can approximate.
-    
-    # Standard Blender Camera FOV logic is complex. 
-    # For a perfect overlay, we usually use the camera's sensor size and focal length.
-    # scale = distance * tan(fov / 2) * 2 or similar.
-    # But for now, let's just fix the "Floating" issue (Rotation/Location).
-    
-    # For a quick fix that looks "okay" without complex math:
-    # Just fix the aspect ratio. The user can scale it manually if needed, or we improve math later.
-    
-    # We need to scale Y to match the camera's sensor aspect behavior
-    # If sensor fit is AUTO (which we set in props.py):
-    # Horizontal fit? Vertical fit?
-    
-    # Let's stick to the previous simple aspect logic, but FIXED TRANSLATION/ROTATION first.
-    
-    if aspect >= 1.0:
-        plane.scale = (aspect * 0.5, 0.5, 1) # Example scale, might need tweaking for FOV
-    else:
-        plane.scale = (0.5, 0.5 / aspect, 1)
-        
-    # NOTE: The size 0.5 is arbitrary. A default plane is 2x2 meters (radius 1).
-    # So scale 0.5 makes it 1x1 meter. 
-    # At distance 1.0, we need to calculate exact size.
-    # Let's try to calculate it for standard 50mm lens?
-    # Actually, better to just let the user see it centered first.
-    
-    # Let's improve the scale math slightly to fill the view more roughly
-    # Camera FOV_Horizontal = 2 * atan((sensor_width/2) / focal_length)
-    # But let's revert to the user's initial code's scale logic but FIXED rotation.
-    
-    if aspect >= 1.0:
-        plane.scale = (aspect, 1, 1) # This assumes plane radius 1 (size 2) covers view?
-        # A plane is 2m x 2m. Scale 1 = 2m wide.
-        # At distance 1m...
-        # It's likely too big, but let's stick to what was there, just aligned.
-    else:
-        plane.scale = (1, 1 / aspect, 1)
+
+    frame = cam.data.view_frame(scene=scene)
+    frame_distance = abs(frame[0].z) or 1.0
+    scale_factor = distance / frame_distance
+    width = abs(frame[0].x - frame[3].x) * scale_factor
+    height = abs(frame[0].y - frame[1].y) * scale_factor
+
+    # Blender's default plane is 2x2 units, so scale is half the target size.
+    plane.scale = (width / 2, height / 2, 1)
 
 def create_overlay_material(scene, image_path):
     if OVERLAY_MAT_NAME in bpy.data.materials:

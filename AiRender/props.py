@@ -101,6 +101,12 @@ def register_properties():
         default="Idle"
     )
 
+    bpy.types.Scene.ai_last_image_path = bpy.props.StringProperty(
+        name="Last AI Image",
+        default="",
+        subtype='FILE_PATH'
+    )
+
 def unregister_properties():
     del bpy.types.Scene.ai_prompt
     del bpy.types.Scene.ai_api_key
@@ -110,3 +116,4 @@ def unregister_properties():
     del bpy.types.Scene.ai_overlay_enabled
     del bpy.types.Scene.ai_overlay_opacity
     del bpy.types.Scene.ai_status
+    del bpy.types.Scene.ai_last_image_path

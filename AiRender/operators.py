@@ -1,6 +1,7 @@
 import bpy
 import threading
-import time
+import os
+import shutil
 from . import client
 from . import utils
 
@@ -66,6 +67,7 @@ class AIRenderJob(threading.Thread):
                 scene.ai_status = "Downloading Image..."
                 temp_path = utils.get_temp_path()
                 client.download_image(self.result_url, temp_path)
+                scene.ai_last_image_path = temp_path
                 
                 scene.ai_status = "Updating Viewport..."
                 plane = utils.get_or_create_overlay_plane(self.context)
@@ -87,9 +89,7 @@ class AIRenderJob(threading.Thread):
         else:
             scene.ai_status = "API Error"
             print(f"API Job Failed: {self.error_msg}")
-            
-            print(f"API Job Failed: {self.error_msg}")
-            
+
             # Show error in a popup
             # We capture self.error_msg in a local variable for the closure
             msg = self.error_msg
@@ -135,7 +135,6 @@ class AIR_OT_render(bpy.types.Operator):
         context.scene.ai_status = "Capturing Viewport..."
         
         # Render to temp path
-        import os
         import tempfile
         temp_render_path = os.path.join(tempfile.gettempdir(), "ai_input_capture.png")
         
@@ -148,6 +147,55 @@ class AIR_OT_render(bpy.types.Operator):
         context.scene.ai_status = "Uploading..."
         AIRenderJob(context, temp_render_path).start()
         return {'FINISHED'}
+
+class AIR_OT_download_result(bpy.types.Operator):
+    bl_idname = "air.download_result"
+    bl_label = "Download Image"
+    bl_description = "Save the latest generated image to your local system"
+
+    filepath: bpy.props.StringProperty(
+        name="File Path",
+        subtype='FILE_PATH',
+        default="ai_render_output.png"
+    ) # type: ignore
+
+    def execute(self, context):
+        source_path = context.scene.ai_last_image_path
+        if not source_path or not os.path.exists(source_path):
+            self.report({'ERROR'}, "No generated image found. Please render first.")
+            return {'CANCELLED'}
+
+        target_path = self.filepath
+        if not target_path:
+            self.report({'ERROR'}, "Please choose a save location.")
+            return {'CANCELLED'}
+
+        if os.path.isdir(target_path):
+            target_path = os.path.join(target_path, "ai_render_output.png")
+
+        _root, ext = os.path.splitext(target_path)
+        if not ext:
+            target_path = f"{target_path}.png"
+
+        try:
+            shutil.copyfile(source_path, target_path)
+            self.report({'INFO'}, f"Saved image to {target_path}")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to save image: {e}")
+            return {'CANCELLED'}
+
+    def invoke(self, context, event):
+        source_path = context.scene.ai_last_image_path
+        if not source_path or not os.path.exists(source_path):
+            self.report({'ERROR'}, "No generated image found. Please render first.")
+            return {'CANCELLED'}
+
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        default_dir = downloads_dir if os.path.isdir(downloads_dir) else os.path.expanduser("~")
+        self.filepath = os.path.join(default_dir, "ai_render_output.png")
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
 class AIR_OT_apply_preset(bpy.types.Operator):
     bl_idname = "air.apply_preset"
@@ -169,6 +217,7 @@ class AIR_OT_apply_preset(bpy.types.Operator):
 
 classes = (
     AIR_OT_render,
+    AIR_OT_download_result,
     AIR_OT_apply_preset,
 )
 

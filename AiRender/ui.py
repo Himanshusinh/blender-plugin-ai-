@@ -62,6 +62,10 @@ class AIR_PT_panel(bpy.types.Panel):
             
         row.operator("air.render", text=btn_text, icon='RENDER_STILL')
 
+        download_row = layout.row()
+        download_row.enabled = bool(scene.ai_last_image_path)
+        download_row.operator("air.download_result", text="Download Image", icon='FILE_IMAGE')
+
         # Status
         layout.label(text=f"Status: {scene.ai_status}")
 
